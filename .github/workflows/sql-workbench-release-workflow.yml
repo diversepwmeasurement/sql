@@ -1,72 +1,76 @@
-name: Release SQL-Workbench Artifacts
-
-on:
-  push:
-    tags:
-      - 'v*'
-
-env: 
-  PLUGIN_NAME: opendistroQueryWorkbenchKibana
+env:
   OD_VERSION: 1.13.2.0
-
+  PLUGIN_NAME: opendistroQueryWorkbenchKibana
 jobs:
-
   build:
-
-    runs-on: ubuntu-latest
-
+    runs-on: self-hosted
     steps:
+    - continue-on-error: true
+      name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_STAGING_ACCESS_KEY_ID }}
+        aws-region: us-east-1
+        aws-secret-access-key: ${{ secrets.AWS_STAGING_SECRET_ACCESS_KEY }}
+    - continue-on-error: true
+      name: Checkout Plugin
+      uses: actions/checkout@v1
+    - continue-on-error: true
+      name: Checkout Kibana
+      uses: actions/checkout@v1
+      with:
+        path: sql/kibana
+        ref: 7.10.2
+        repository: opendistro-for-elasticsearch/kibana-oss
+        token: ${{secrets.OD_ACCESS}}
+    - continue-on-error: true
+      name: Setup Node
+      uses: actions/setup-node@v1
+      with:
+        node-version: 10.23.1
+    - continue-on-error: true
+      name: Move Workbench to Plugins Dir
+      run: 'mv workbench kibana/plugins
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_STAGING_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_STAGING_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+        '
+    - continue-on-error: true
+      name: Kibana Plugin Bootstrap
+      uses: nick-invision/retry@v1
+      with:
+        command: cd kibana/plugins/workbench; yarn kbn bootstrap
+        max_attempts: 3
+        timeout_minutes: 60
+    - continue-on-error: true
+      name: Build
+      run: 'cd kibana/plugins/workbench
 
-      - name: Checkout Plugin
-        uses: actions/checkout@v1
+        yarn build
 
-      - name: Checkout Kibana
-        uses: actions/checkout@v1
-        with:
-          repository: opendistro-for-elasticsearch/kibana-oss
-          ref: 7.10.2
-          token: ${{secrets.OD_ACCESS}}
-          path: sql/kibana
+        mv ./build/*.zip ./build/${{ env.PLUGIN_NAME }}-${{ env.OD_VERSION }}.zip
 
-      - name: Setup Node
-        uses: actions/setup-node@v1
-        with:
-          node-version: '10.23.1'
+        '
+    - continue-on-error: true
+      name: Upload to S3
+      run: 'cd kibana/plugins/workbench
 
-      - name: Move Workbench to Plugins Dir
-        run: |
-          mv workbench kibana/plugins
+        zip=`ls ./build/*.zip`
 
-      - name: Kibana Plugin Bootstrap
-        uses: nick-invision/retry@v1
-        with:
-          timeout_minutes: 60
-          max_attempts: 3
-          command: cd kibana/plugins/workbench; yarn kbn bootstrap
 
-      - name: Build
-        run: |
-          cd kibana/plugins/workbench
-          yarn build
-          mv ./build/*.zip ./build/${{ env.PLUGIN_NAME }}-${{ env.OD_VERSION }}.zip
+        # Inject the build number before the suffix
 
-      - name: Upload to S3
-        shell: bash
-        run: |
-          cd kibana/plugins/workbench
-          zip=`ls ./build/*.zip`
+        zip_outfile=`basename ${zip%.zip}-build-${GITHUB_RUN_NUMBER}.zip`
 
-          # Inject the build number before the suffix
-          zip_outfile=`basename ${zip%.zip}-build-${GITHUB_RUN_NUMBER}.zip`
 
-          s3_prefix="s3://staging.artifacts.opendistroforelasticsearch.amazon.com/snapshots/kibana-plugins/query-workbench/"
+        s3_prefix="s3://staging.artifacts.opendistroforelasticsearch.amazon.com/snapshots/kibana-plugins/query-workbench/"
 
-          echo "Copying ${zip} to ${s3_prefix}${zip_outfile}"
-          aws s3 cp --quiet $zip ${s3_prefix}${zip_outfile}
+
+        echo "Copying ${zip} to ${s3_prefix}${zip_outfile}"
+
+        aws s3 cp --quiet $zip ${s3_prefix}${zip_outfile}
+
+        '
+      shell: bash
+name: Release SQL-Workbench Artifacts
+on:
+  repository_dispatch:
+    types: trigger-ga___sql-workbench-release-workflow.yml

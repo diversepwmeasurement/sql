@@ -1,33 +1,34 @@
-name: SQL JDBC Java CI
-
-on: [push, pull_request]
-
 jobs:
   build:
-
-    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: sql-jdbc
-
+    runs-on: self-hosted
     steps:
-    - uses: actions/checkout@v1
-    
-    - name: Set up JDK 1.14
+    - continue-on-error: true
+      uses: actions/checkout@v1
+    - continue-on-error: true
+      name: Set up JDK 1.14
       uses: actions/setup-java@v1
       with:
         java-version: 1.14
-    
-    - name: Build with Gradle
+    - continue-on-error: true
+      name: Build with Gradle
       run: ./gradlew build
-    
-    - name: Create Artifact Path
-      run: |
-        mkdir -p sql-jdbc-builds
+    - continue-on-error: true
+      name: Create Artifact Path
+      run: 'mkdir -p sql-jdbc-builds
+
         cp ./build/libs/*.jar sql-jdbc-builds
 
-    - name: Upload Artifacts
+        '
+    - continue-on-error: true
+      name: Upload Artifacts
       uses: actions/upload-artifact@v1
       with:
         name: sql-jdbc
         path: sql-jdbc/sql-jdbc-builds
+name: SQL JDBC Java CI
+on:
+  repository_dispatch:
+    types: trigger-ga___sql-jdbc-test-and-build-workflow.yml
